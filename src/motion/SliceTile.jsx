@@ -83,3 +83,22 @@ export function SliceTile({ image, title, index, onOpen, sliceCount = 5, layoutI
     <span className="slice-tile-title">{title}</span>
   </button>
 }
+
+// Plain gallery tiles for collection pages. Homepage tiles keep the slice reveal.
+export function StaticGalleryTile({ image, title, onOpen }) {
+  const src = localImage(image, 900)
+  const buttonRef = useRef(null)
+
+  return <button
+    ref={buttonRef}
+    type="button"
+    className="static-gallery-tile"
+    aria-label={`Open ${title}`}
+    onClick={() => onOpen?.({ opener: buttonRef.current })}
+  >
+    <span className="static-gallery-image">
+      <img src={src} alt="" loading="lazy" decoding="async" />
+    </span>
+    <span className="static-gallery-title">{title}</span>
+  </button>
+}

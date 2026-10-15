@@ -6,7 +6,6 @@ import {
   getStoredFirebaseConfig, 
   reinitFirebase,
   getDb,
-  fetchContentFromCloud,
   saveEnquiryToCloud,
   fetchEnquiriesFromCloud,
   subscribeToCloudEnquiries,
@@ -97,6 +96,26 @@ const sanitizePhotos = (photos) => {
   }))
 }
 
+// Avoid serializing large inline photo collections synchronously on every edit.
+// IndexedDB stores the full object; localStorage remains a fast small-content cache.
+function hasLargeInlineImages(value, threshold = 300000) {
+  let total = 0
+  const visit = item => {
+    if (total > threshold || item == null) return
+    if (typeof item === 'string') {
+      if (item.startsWith('data:image/')) total += item.length
+      return
+    }
+    if (Array.isArray(item)) {
+      item.forEach(visit)
+      return
+    }
+    if (typeof item === 'object') Object.values(item).forEach(visit)
+  }
+  visit(value)
+  return total > threshold
+}
+
 const PortfolioContext = createContext(null)
 
 export function PortfolioProvider({ children }) {
@@ -126,6 +145,7 @@ export function PortfolioProvider({ children }) {
       photos: sanitizePhotos(defaultContent.photos)
     }
   })
+  const contentSavedAtRef = useRef(content._lastSavedAt || 0)
 
   const [isAdminOpen, setIsAdminOpen] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -136,6 +156,7 @@ export function PortfolioProvider({ children }) {
       if (saved && saved._lastSavedAt) {
         setContent(prev => {
           if (!prev._lastSavedAt || saved._lastSavedAt > prev._lastSavedAt) {
+            contentSavedAtRef.current = saved._lastSavedAt
             return {
               ...defaultContent,
               ...saved,
@@ -186,6 +207,7 @@ export function PortfolioProvider({ children }) {
       if (cloudData && (cloudData.categories?.length || cloudData.photos?.length)) {
         setContent(() => {
           const cloudTime = cloudData._lastSavedAt || cloudData._cloudSyncedAt || Date.now()
+          contentSavedAtRef.current = Math.max(contentSavedAtRef.current, cloudTime)
           const merged = {
             ...defaultContent,
             ...cloudData,
@@ -197,44 +219,22 @@ export function PortfolioProvider({ children }) {
             heroSlides: cloudData.heroSlides?.length ? cloudData.heroSlides : defaultContent.heroSlides,
             _lastSavedAt: cloudTime
           }
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
-          } catch (e) { /* ignore */ }
+          if (!hasLargeInlineImages(merged)) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)) } catch (e) { /* ignore */ }
+          }
           idbSet(STORAGE_KEY, merged)
           return merged
         })
       }
+    }, metadata => {
+      const remoteTime = metadata?._lastSavedAt || metadata?._cloudSyncedAt || 0
+      return remoteTime > 0 && remoteTime <= contentSavedAtRef.current
     })
 
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe()
     }
   }, [cloudConnected])
-
-  // Initial cloud sync check: if cloud has content, load it into state and cache
-  useEffect(() => {
-    fetchContentFromCloud().then((cloudData) => {
-      if (cloudData && (cloudData.categories?.length || cloudData.photos?.length)) {
-        setContent(() => {
-          const cloudTime = cloudData._lastSavedAt || cloudData._cloudSyncedAt || Date.now()
-          const merged = {
-            ...defaultContent,
-            ...cloudData,
-            settings: { ...defaultContent.settings, ...(cloudData.settings || {}) },
-            about: { ...defaultContent.about, ...(cloudData.about || {}) },
-            contact: { ...defaultContent.contact, ...(cloudData.contact || {}) },
-            categories: cloudData.categories?.length ? cloudData.categories : defaultContent.categories,
-            photos: sanitizePhotos(cloudData.photos?.length ? cloudData.photos : defaultContent.photos),
-            heroSlides: cloudData.heroSlides?.length ? cloudData.heroSlides : defaultContent.heroSlides,
-            _lastSavedAt: cloudTime
-          }
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)) } catch (e) {}
-          idbSet(STORAGE_KEY, merged)
-          return merged
-        })
-      }
-    }).catch(() => {})
-  }, [])
 
   // -----------------------------------------------------------------
   // Client Inquiries (Real-time Cloud Sync + Local Offline Resilience)
@@ -278,9 +278,11 @@ export function PortfolioProvider({ children }) {
   const syncCurrentContentToCloud = async () => {
     try {
       setCloudSyncStatus('syncing')
+      const savedAt = Date.now()
+      contentSavedAtRef.current = Math.max(contentSavedAtRef.current, savedAt)
       const result = await pushContentToCloud({
         ...content,
-        _lastSavedAt: Date.now()
+        _lastSavedAt: savedAt
       })
       setCloudSyncStatus(result?.ok ? 'synced' : 'error')
       return result || { ok: false, error: 'Cloud sync failed.' }
@@ -296,7 +298,9 @@ export function PortfolioProvider({ children }) {
     const isNowConnected = Boolean(getDb())
     setCloudConnected(isNowConnected)
     if (isNowConnected) {
-      pushContentToCloud({ ...content, _lastSavedAt: Date.now() })
+      const savedAt = Date.now()
+      contentSavedAtRef.current = Math.max(contentSavedAtRef.current, savedAt)
+      pushContentToCloud({ ...content, _lastSavedAt: savedAt })
       alert('Firebase Cloud Sync connected! All devices (phone & laptop) are now live synchronized.')
       return true
     } else {
@@ -316,12 +320,15 @@ export function PortfolioProvider({ children }) {
         ...nextContent,
         _lastSavedAt: Date.now()
       }
+      contentSavedAtRef.current = Math.max(contentSavedAtRef.current, finalized._lastSavedAt)
 
       // 1. Try saving to localStorage
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(finalized))
-      } catch (e) {
-        console.warn('LocalStorage quota or write error, IndexedDB will maintain changes:', e)
+      if (!hasLargeInlineImages(finalized)) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(finalized))
+        } catch (e) {
+          console.warn('LocalStorage quota or write error, IndexedDB will maintain changes:', e)
+        }
       }
 
       // 2. Save to IndexedDB (asynchronous, virtually unlimited quota for media)

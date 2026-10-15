@@ -6,7 +6,7 @@ import { identity, images, imageUrl, localContent, localImage, localSrcSet } fro
 import { useSmoothScroll } from '../motion/useSmoothScroll'
 import { Preloader } from '../motion/Preloader'
 import { motionTokens } from '../motion/tokens'
-import { SliceTile, SliceTileBoundary } from '../motion/SliceTile'
+import { SliceTile, SliceTileBoundary, StaticGalleryTile } from '../motion/SliceTile'
 import { FullscreenViewer } from '../motion/FullscreenViewer'
 import { contactFormConfigured, hasTurnstile, FORMSPREE_FORM_ID, TURNSTILE_SITE_KEY } from '../config/integrations'
 import { usePortfolio } from './usePortfolioData'
@@ -391,7 +391,6 @@ function CategoryPage({ onOpenViewer }) {
   const { categories, photos } = usePublicContent()
   const category = categories.find(item => item.slug === slug)
   const gallery = photos.filter(photo => photo.categorySlug === slug)
-  const [viewAll, setViewAll] = useState(false)
   
   if (!category) {
     return (
@@ -413,11 +412,6 @@ function CategoryPage({ onOpenViewer }) {
         <span className="eyebrow" style={{ display: 'block' }}>Selected stories</span>
         <h1>{category.title}</h1>
         {category.description && <p>{category.description}</p>}
-        {gallery.length > 0 && (
-          <button className="view-all-button" type="button" aria-expanded={viewAll} onClick={() => setViewAll(value => !value)}>
-            {viewAll ? 'SHOW PEEKS' : 'VIEW ALL'}
-          </button>
-        )}
       </header>
       {gallery.length ? (
         <div className="gallery-grid">
@@ -431,14 +425,10 @@ function CategoryPage({ onOpenViewer }) {
             )
             return (
               <SliceTileBoundary fallback={fallback} key={photo._id}>
-                <SliceTile 
-                  image={photo.image} 
-                  title={title} 
-                  index={i} 
-                  sliceCount={3} 
-                  revealed={viewAll} 
-                  layoutId={`gallery-${category.slug}-${photo._id}`} 
-                  onOpen={details => onOpenViewer(category, i, details)}
+                <StaticGalleryTile
+                  image={photo.image}
+                  title={title}
+                  onOpen={details => onOpenViewer(category, i, { ...details, animateTransition: false })}
                 />
               </SliceTileBoundary>
             )
@@ -471,7 +461,7 @@ function App() {
   const openViewer = useCallback((category, initialIndex, details = {}) => {
     const album = (content?.photos || []).filter(photo => photo.categorySlug === category.slug)
     if (!album.length) return
-    setViewer({ category, photos: album, initialIndex, opener: details.opener, resetTile: details.resetTile })
+    setViewer({ category, photos: album, initialIndex, opener: details.opener, resetTile: details.resetTile, animateTransition: details.animateTransition !== false })
   }, [content?.photos])
   const closeViewer = useCallback(() => setViewer(null), [])
   useEffect(() => {
@@ -506,7 +496,7 @@ function App() {
       </motion.div>
     </AnimatePresence>
     <AnimatePresence>
-      {viewer && <FullscreenViewer category={viewer.category} photos={viewer.photos} initialIndex={viewer.initialIndex} onClose={closeViewer} opener={viewer.opener} resetTile={viewer.resetTile}/>}
+      {viewer && <FullscreenViewer category={viewer.category} photos={viewer.photos} initialIndex={viewer.initialIndex} onClose={closeViewer} opener={viewer.opener} resetTile={viewer.resetTile} animateTransition={viewer.animateTransition}/>}
     </AnimatePresence>
     {intro.show && <Preloader onReveal={() => setIntro(state => ({ ...state, ready: true }))} onComplete={() => setIntro({ show: false, ready: true })}/>}
     <AdminModal/>

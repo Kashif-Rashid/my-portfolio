@@ -43,8 +43,13 @@ const compressImage = (file, maxWidth = 1600, quality = 0.8) => {
         canvas.height = height
         const ctx = canvas.getContext('2d')
         ctx.drawImage(img, 0, 0, width, height)
-        const compressed = canvas.toDataURL('image/jpeg', quality)
-        resolve(compressed)
+        canvas.toBlob(blob => {
+          if (!blob) return reject(new Error('Image compression failed'))
+          const output = new FileReader()
+          output.onload = event => resolve(event.target.result)
+          output.onerror = reject
+          output.readAsDataURL(blob)
+        }, 'image/jpeg', quality)
       }
       img.src = e.target.result
     }
@@ -77,8 +82,13 @@ const compressDataUrl = (dataUrl, maxWidth = 1400, quality = 0.78) => {
       const ctx = canvas.getContext('2d')
       ctx.drawImage(img, 0, 0, width, height)
       try {
-        const compressed = canvas.toDataURL('image/jpeg', quality)
-        resolve(compressed)
+        canvas.toBlob(blob => {
+          if (!blob) return resolve(dataUrl)
+          const output = new FileReader()
+          output.onload = event => resolve(event.target.result)
+          output.onerror = () => resolve(dataUrl)
+          output.readAsDataURL(blob)
+        }, 'image/jpeg', quality)
       } catch {
         resolve(dataUrl)
       }
@@ -282,7 +292,7 @@ export function AdminModal() {
 
     setIsUploading(true)
     try {
-      const compressedData = await compressImage(file, 1600, 0.8)
+      const compressedData = await compressImage(file, 1400, 0.76)
       callback(compressedData)
     } catch (err) {
       console.warn('Compression failed, using standard reader:', err)
@@ -323,7 +333,7 @@ export function AdminModal() {
       return
     }
 
-    const compressedSrc = await compressDataUrl(photoForm.src.trim(), 1200, 0.76)
+    const compressedSrc = await compressDataUrl(photoForm.src.trim(), 1200, 0.72)
 
     if (editingPhotoId) {
       editPhoto(editingPhotoId, {

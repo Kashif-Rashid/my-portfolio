@@ -92,7 +92,7 @@ const PUBLISH_COLLECTION = 'portfolio_cms_versions'
 
 // Clean and deduplicate duplicate image data before transmitting to Firestore
 function sanitizeContentForUpload(data) {
-  const clean = JSON.parse(JSON.stringify(data))
+  const clean = { ...data }
   if (Array.isArray(clean.categories)) {
     clean.categories = clean.categories.map(cat => {
       // If coverImage.src is identical to cat.src, don't duplicate the large data string
@@ -257,7 +257,7 @@ export async function fetchContentFromCloud() {
 }
 
 // Real-time listener: triggers whenever laptop or phone updates content
-export function subscribeToCloudContent(onUpdate) {
+export function subscribeToCloudContent(onUpdate, shouldSkip = () => false) {
   const db = getDb()
   if (!db) return () => {}
 
@@ -265,7 +265,9 @@ export function subscribeToCloudContent(onUpdate) {
     const docRef = doc(db, COLLECTION_NAME, DOC_ID)
     const unsubscribe = onSnapshot(docRef, async (docSnap) => {
       if (docSnap.exists()) {
-        const data = await reconstructContent(docSnap.data(), db)
+        const metadata = docSnap.data()
+        if (shouldSkip(metadata)) return
+        const data = await reconstructContent(metadata, db)
         if (data) {
           onUpdate(data)
         }

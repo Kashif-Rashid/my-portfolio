@@ -7,7 +7,7 @@ import { motionTokens } from './tokens'
 
 const formatCount = value => String(value).padStart(2, '0')
 
-export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, opener, resetTile }) {
+export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, opener, resetTile, animateTransition = true }) {
   const [activeIndex, setActiveIndex] = useState(initialIndex)
   const [switching, setSwitching] = useState(false)
   const switchingRef = useRef(false)
@@ -22,6 +22,10 @@ export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, 
 
   const changePhoto = useCallback(direction => {
     if (photos.length < 2 || switchingRef.current) return
+    if (!animateTransition) {
+      setActiveIndex(index => (index + direction + photos.length) % photos.length)
+      return
+    }
     switchingRef.current = true
     setSwitching(true)
     transitionTimer.current = window.setTimeout(() => {
@@ -29,7 +33,7 @@ export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, 
       switchingRef.current = false
       setSwitching(false)
     }, 600)
-  }, [photos.length])
+  }, [animateTransition, photos.length])
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -89,9 +93,9 @@ export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, 
     <section className="fullscreen-viewer-dialog" role="dialog" aria-modal="true" aria-label={`${category.title} photographs`} tabIndex={-1} ref={dialogRef} onClick={event => event.stopPropagation()} onWheel={handleWheel} onTouchStart={event => { touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY } }} onTouchEnd={handleTouchEnd}>
       <button ref={closeRef} type="button" className="viewer-close" aria-label="Close photograph viewer" onClick={onClose}><X size={21} strokeWidth={1}/></button>
       <button type="button" className="viewer-arrow viewer-previous" aria-label="Previous photograph" onClick={() => changePhoto(-1)}><ArrowLeft size={21} strokeWidth={1}/></button>
-      <div className={`viewer-media${switching ? ' is-switching' : ''}`}>
+      <div className={`viewer-media${switching ? ' is-switching' : ''}${animateTransition ? '' : ' viewer-media-static'}`}>
         <AnimatePresence mode="wait">
-          {!switching && photo && <motion.img
+          {!switching && photo && (animateTransition ? <motion.img
             key={photo._id}
             className="viewer-image"
             layoutId={sharedLayoutId}
@@ -102,9 +106,9 @@ export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, 
             exit={{ opacity: 0, clipPath: 'inset(0 50% 0 50%)', transition: { duration: 0.5, ease: motionTokens.easing.silk } }}
             transition={{ duration: 0.9, ease: motionTokens.easing.silk, layout: { duration: 0.9, ease: motionTokens.easing.luxury } }}
             draggable="false"
-          />}
+          /> : <img key={photo._id} className="viewer-image" src={largeSrc} alt={photo.altText || photo.image?.alt || ''} draggable="false" />)}
         </AnimatePresence>
-        {switching && <div className="viewer-slice-close" aria-hidden="true">{Array.from({ length: 5 }, (_, strip) => <span key={strip} style={{ '--strip-index': strip, top: `${strip * 20}%`, backgroundImage: `url("${largeSrc}")`, backgroundSize: '100% 500%', backgroundPosition: `center ${strip * 25}%` }} />)}</div>}
+        {animateTransition && switching && <div className="viewer-slice-close" aria-hidden="true">{Array.from({ length: 5 }, (_, strip) => <span key={strip} style={{ '--strip-index': strip, top: `${strip * 20}%`, backgroundImage: `url("${largeSrc}")`, backgroundSize: '100% 500%', backgroundPosition: `center ${strip * 25}%` }} />)}</div>}
       </div>
       <button type="button" className="viewer-arrow viewer-next" aria-label="Next photograph" onClick={() => changePhoto(1)}><ArrowRight size={21} strokeWidth={1}/></button>
       <div className="viewer-caption"><span className="viewer-category">{category.title}</span><p>{photo?.caption || photo?.altText}</p><span className="viewer-counter">{formatCount(activeIndex + 1)} <i/> {formatCount(photos.length)}</span><Link className="viewer-view-category" to={`/portfolio/${category.slug}`} onClick={onClose}>VIEW FULL COLLECTION <ArrowRight size={12}/></Link></div>
