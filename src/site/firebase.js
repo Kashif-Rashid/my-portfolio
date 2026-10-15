@@ -86,8 +86,9 @@ export function reinitFirebase(newConfig) {
   return getDb()
 }
 
-const CHUNK_SIZE = 700000 // 700KB per Firestore document (safe under 1048487 bytes limit)
+const CHUNK_SIZE = 700000 // Firestore document safety limit
 const SYNC_TIMEOUT_MS = 20000
+const PUBLISH_COLLECTION = 'portfolio_cms_versions'
 
 // Clean and deduplicate duplicate image data before transmitting to Firestore
 function sanitizeContentForUpload(data) {
@@ -131,10 +132,12 @@ async function reconstructContent(docData, db) {
   // 1. Chunked documents (fetch concurrently in parallel)
   if (docData.isChunked && docData.chunkCount) {
     try {
+      const version = docData.version || 'legacy'
       const chunkPromises = Array.from({ length: docData.chunkCount }, (_, i) => 
-        getDoc(doc(db, COLLECTION_NAME, `chunk_${i}`))
+        getDoc(doc(db, PUBLISH_COLLECTION, `${version}_chunk_${i}`))
       )
       const chunkSnaps = await Promise.all(chunkPromises)
+      if (chunkSnaps.some(snap => !snap.exists())) throw new Error('Cloud content upload is incomplete')
       const combined = chunkSnaps.map(snap => snap.exists() ? (snap.data()?.data || '') : '').join('')
       if (combined) {
         return restoreSanitizedContent(JSON.parse(combined))
@@ -191,21 +194,23 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
           _cloudSyncedAt: cleanData._cloudSyncedAt
         }), SYNC_TIMEOUT_MS)
       } else {
-        // Chunk across multiple documents to never exceed Firestore 1MB limits
+        // Stage immutable versioned chunks, then atomically publish the pointer.
+        // Readers can never combine chunks from two different saves.
         const totalChunks = Math.ceil(jsonStr.length / CHUNK_SIZE)
-        // Upload chunks concurrently in parallel
+        const version = `${cleanData._lastSavedAt}_${Math.random().toString(36).slice(2, 8)}`
         const uploadChunks = Array.from({ length: totalChunks }, (_, i) => {
           const chunkPart = jsonStr.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-          return withTimeout(setDoc(doc(db, COLLECTION_NAME, `chunk_${i}`), {
+          return withTimeout(setDoc(doc(db, PUBLISH_COLLECTION, `${version}_chunk_${i}`), {
             data: chunkPart,
             index: i,
-            updatedAt: Date.now()
+            version
           }), SYNC_TIMEOUT_MS)
         })
         await Promise.all(uploadChunks)
         await withTimeout(setDoc(docRef, {
           isChunked: true,
           chunkCount: totalChunks,
+          version,
           _lastSavedAt: cleanData._lastSavedAt,
           _cloudSyncedAt: cleanData._cloudSyncedAt
         }), SYNC_TIMEOUT_MS)

@@ -101,6 +101,7 @@ const PortfolioContext = createContext(null)
 
 export function PortfolioProvider({ children }) {
   const cloudPushTimer = useRef(null)
+  const [cloudSyncStatus, setCloudSyncStatus] = useState('synced')
   const [content, setContent] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
@@ -276,13 +277,16 @@ export function PortfolioProvider({ children }) {
 
   const syncCurrentContentToCloud = async () => {
     try {
+      setCloudSyncStatus('syncing')
       const success = await pushContentToCloud({
         ...content,
         _lastSavedAt: Date.now()
       })
+      setCloudSyncStatus(success ? 'synced' : 'error')
       return Boolean(success)
     } catch (e) {
       console.error('syncCurrentContentToCloud error:', e)
+      setCloudSyncStatus('error')
       return false
     }
   }
@@ -327,7 +331,10 @@ export function PortfolioProvider({ children }) {
       // Coalesce rapid edits so uploads don't pile up on mobile connections.
       if (cloudPushTimer.current) clearTimeout(cloudPushTimer.current)
       cloudPushTimer.current = setTimeout(() => {
-        pushContentToCloud(finalized)
+        setCloudSyncStatus('syncing')
+        pushContentToCloud(finalized).then(success => {
+          setCloudSyncStatus(success ? 'synced' : 'error')
+        }).catch(() => setCloudSyncStatus('error'))
       }, 600)
 
       return finalized
@@ -642,6 +649,7 @@ export function PortfolioProvider({ children }) {
       importData,
       saveContent,
       cloudConnected,
+      cloudSyncStatus,
       saveFirebaseConfig,
       getStoredFirebaseConfig,
       syncCurrentContentToCloud,

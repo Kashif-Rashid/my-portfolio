@@ -114,6 +114,7 @@ export function AdminModal() {
     exportData,
     importData,
     cloudConnected,
+    cloudSyncStatus,
     saveFirebaseConfig,
     getStoredFirebaseConfig,
     syncCurrentContentToCloud,
@@ -1431,8 +1432,12 @@ export function AdminModal() {
                           Cross-Device Cloud Sync (Laptop &amp; Phone)
                         </h4>
                         <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#666' }}>
-                          {cloudConnected 
-                            ? '🟢 Live Sync Active: Any changes made on laptop or phone automatically sync across all devices in real time.'
+                          {cloudConnected
+                            ? cloudSyncStatus === 'error'
+                              ? '🔴 Cloud sync failed. This device has local changes that may not be visible elsewhere.'
+                              : cloudSyncStatus === 'syncing'
+                                ? '🟡 Syncing latest changes to the cloud…'
+                                : '🟢 Cloud connected. Changes sync across devices after they are saved.'
                             : '⚪ Local Mode: Edits are currently saved only in this browser. Connect Firebase below to enable cross-device live sync.'}
                         </p>
                       </div>
