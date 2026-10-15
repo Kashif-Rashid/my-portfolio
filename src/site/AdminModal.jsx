@@ -322,7 +322,7 @@ export function AdminModal() {
       return
     }
 
-    const compressedSrc = await compressDataUrl(photoForm.src.trim())
+    const compressedSrc = await compressDataUrl(photoForm.src.trim(), 1200, 0.76)
 
     if (editingPhotoId) {
       editPhoto(editingPhotoId, {
@@ -363,7 +363,7 @@ export function AdminModal() {
       return
     }
 
-    const compressedSrc = await compressDataUrl(categoryForm.src.trim())
+    const compressedSrc = await compressDataUrl(categoryForm.src.trim(), 900, 0.72)
 
     if (editingCategorySlug) {
       editCategory(editingCategorySlug, {

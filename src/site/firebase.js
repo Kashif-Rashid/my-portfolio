@@ -87,24 +87,57 @@ export function reinitFirebase(newConfig) {
 }
 
 const CHUNK_SIZE = 700000 // 700KB per Firestore document (safe under 1048487 bytes limit)
-const SYNC_TIMEOUT_MS = 45000
+const SYNC_TIMEOUT_MS = 20000
+
+// Clean and deduplicate duplicate image data before transmitting to Firestore
+function sanitizeContentForUpload(data) {
+  const clean = JSON.parse(JSON.stringify(data))
+  if (Array.isArray(clean.categories)) {
+    clean.categories = clean.categories.map(cat => {
+      // If coverImage.src is identical to cat.src, don't duplicate the large data string
+      if (cat && cat.coverImage && typeof cat.coverImage === 'object' && cat.coverImage.src === cat.src) {
+        return {
+          ...cat,
+          coverImage: { alt: cat.coverImage.alt || `${cat.title || ''} portfolio collection` }
+        }
+      }
+      return cat
+    })
+  }
+  return clean
+}
+
+// Restore any omitted redundant fields after downloading from Firestore
+function restoreSanitizedContent(data) {
+  if (!data) return data
+  if (Array.isArray(data.categories)) {
+    data.categories = data.categories.map(cat => {
+      if (cat && cat.src && cat.coverImage && !cat.coverImage.src) {
+        return {
+          ...cat,
+          coverImage: { ...cat.coverImage, src: cat.src }
+        }
+      }
+      return cat
+    })
+  }
+  return data
+}
 
 // Reconstruct complete JSON content from single payload, chunks, or legacy fields
 async function reconstructContent(docData, db) {
   if (!docData) return null
 
-  // 1. Chunked documents
+  // 1. Chunked documents (fetch concurrently in parallel)
   if (docData.isChunked && docData.chunkCount) {
     try {
-      let combined = ''
-      for (let i = 0; i < docData.chunkCount; i++) {
-        const chunkSnap = await getDoc(doc(db, COLLECTION_NAME, `chunk_${i}`))
-        if (chunkSnap.exists()) {
-          combined += (chunkSnap.data()?.data || '')
-        }
-      }
+      const chunkPromises = Array.from({ length: docData.chunkCount }, (_, i) => 
+        getDoc(doc(db, COLLECTION_NAME, `chunk_${i}`))
+      )
+      const chunkSnaps = await Promise.all(chunkPromises)
+      const combined = chunkSnaps.map(snap => snap.exists() ? (snap.data()?.data || '') : '').join('')
       if (combined) {
-        return JSON.parse(combined)
+        return restoreSanitizedContent(JSON.parse(combined))
       }
     } catch (e) {
       console.error('Error reconstructing chunked Firestore content:', e)
@@ -114,14 +147,14 @@ async function reconstructContent(docData, db) {
   // 2. Single payload string
   if (docData.payload) {
     try {
-      return JSON.parse(docData.payload)
+      return restoreSanitizedContent(JSON.parse(docData.payload))
     } catch (e) {
       console.error('Error parsing Firestore payload:', e)
     }
   }
 
   // 3. Direct document fields (legacy fallback)
-  return docData
+  return restoreSanitizedContent(docData)
 }
 
 const withTimeout = (promise, ms = SYNC_TIMEOUT_MS) => {
@@ -131,7 +164,7 @@ const withTimeout = (promise, ms = SYNC_TIMEOUT_MS) => {
   ])
 }
 
-// Push latest portfolio content to cloud Firestore (with automatic retry and chunking)
+// Push latest portfolio content to cloud Firestore (with deduplication, parallel upload, and retry)
 export async function pushContentToCloud(contentData, maxRetries = 2) {
   const db = getDb()
   if (!db) {
@@ -141,8 +174,8 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Strip any undefined fields
-      const cleanData = JSON.parse(JSON.stringify(contentData))
+      // Strip any undefined fields and deduplicate large identical media strings
+      const cleanData = sanitizeContentForUpload(contentData)
       cleanData._lastSavedAt = cleanData._lastSavedAt || Date.now()
       cleanData._cloudSyncedAt = Date.now()
       const jsonStr = JSON.stringify(cleanData)
@@ -150,7 +183,7 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
       const docRef = doc(db, COLLECTION_NAME, DOC_ID)
 
       if (jsonStr.length < CHUNK_SIZE) {
-        // Safe in a single document
+        // Safe in a single document - fast sub-second upload
         await withTimeout(setDoc(docRef, {
           isChunked: false,
           payload: jsonStr,
@@ -160,7 +193,7 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
       } else {
         // Chunk across multiple documents to never exceed Firestore 1MB limits
         const totalChunks = Math.ceil(jsonStr.length / CHUNK_SIZE)
-        // Upload chunks concurrently to avoid slow, serial mobile uploads.
+        // Upload chunks concurrently in parallel
         const uploadChunks = Array.from({ length: totalChunks }, (_, i) => {
           const chunkPart = jsonStr.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
           return withTimeout(setDoc(doc(db, COLLECTION_NAME, `chunk_${i}`), {
@@ -183,8 +216,7 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
     } catch (err) {
       console.warn(`Cloud sync attempt ${attempt} failed:`, err?.message || err)
       if (attempt < maxRetries) {
-        // Wait 1.2 seconds for socket or single-document rate-limit to clear before retrying
-        await new Promise(r => setTimeout(r, 1200))
+        await new Promise(r => setTimeout(r, 800))
       } else {
         console.error('Failed to sync content to Firebase cloud after retries:', err)
         return false
