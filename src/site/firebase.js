@@ -216,7 +216,7 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
       }
 
       console.log(`Successfully synced content to Firebase cloud (attempt ${attempt})!`)
-      return true
+      return { ok: true }
     } catch (err) {
       console.warn(`Cloud sync attempt ${attempt} failed:`, err?.message || err)
       if (attempt < maxRetries) {
