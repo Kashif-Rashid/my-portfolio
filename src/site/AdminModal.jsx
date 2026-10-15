@@ -145,12 +145,12 @@ export function AdminModal() {
     setCloudSyncing(true)
     setCloudSyncFeedback(null)
     try {
-      const ok = await syncCurrentContentToCloud()
-      if (ok) {
+      const result = await syncCurrentContentToCloud()
+      if (result?.ok) {
         setLastSyncedAt(Date.now())
         setCloudSyncFeedback({ type: 'success', text: 'Cloud sync successful! Phone & laptop are now 100% updated.' })
       } else {
-        setCloudSyncFeedback({ type: 'error', text: 'Sync busy or slow network. Please wait a moment and try again.' })
+        setCloudSyncFeedback({ type: 'error', text: `Cloud sync failed: ${result?.error || 'Unknown Firebase error'}` })
       }
     } catch (err) {
       setCloudSyncFeedback({ type: 'error', text: 'Sync error: ' + (err?.message || 'Network busy') })

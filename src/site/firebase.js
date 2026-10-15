@@ -171,8 +171,7 @@ const withTimeout = (promise, ms = SYNC_TIMEOUT_MS) => {
 export async function pushContentToCloud(contentData, maxRetries = 2) {
   const db = getDb()
   if (!db) {
-    console.warn('Firebase DB not initialized, cannot push')
-    return false
+    return { ok: false, error: 'Firebase did not initialize. Check the project configuration.' }
   }
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -224,11 +223,20 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
         await new Promise(r => setTimeout(r, 800))
       } else {
         console.error('Failed to sync content to Firebase cloud after retries:', err)
-        return false
+        return {
+          ok: false,
+          error: err?.code === 'permission-denied'
+            ? 'Firestore denied access (permission-denied). Check the database rules.'
+            : err?.code === 'unavailable'
+              ? 'Firestore is unavailable. Check your internet connection and Firebase status.'
+              : err?.code === 'resource-exhausted'
+                ? 'Firestore quota or request limit was reached.'
+                : err?.message || String(err)
+        }
       }
     }
   }
-  return false
+  return { ok: false, error: 'Cloud sync failed.' }
 }
 
 // Pull content once

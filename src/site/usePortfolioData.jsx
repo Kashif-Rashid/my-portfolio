@@ -278,16 +278,16 @@ export function PortfolioProvider({ children }) {
   const syncCurrentContentToCloud = async () => {
     try {
       setCloudSyncStatus('syncing')
-      const success = await pushContentToCloud({
+      const result = await pushContentToCloud({
         ...content,
         _lastSavedAt: Date.now()
       })
-      setCloudSyncStatus(success ? 'synced' : 'error')
-      return Boolean(success)
+      setCloudSyncStatus(result?.ok ? 'synced' : 'error')
+      return result || { ok: false, error: 'Cloud sync failed.' }
     } catch (e) {
       console.error('syncCurrentContentToCloud error:', e)
       setCloudSyncStatus('error')
-      return false
+      return { ok: false, error: e?.message || 'Cloud sync failed.' }
     }
   }
 
@@ -332,8 +332,8 @@ export function PortfolioProvider({ children }) {
       if (cloudPushTimer.current) clearTimeout(cloudPushTimer.current)
       cloudPushTimer.current = setTimeout(() => {
         setCloudSyncStatus('syncing')
-        pushContentToCloud(finalized).then(success => {
-          setCloudSyncStatus(success ? 'synced' : 'error')
+        pushContentToCloud(finalized).then(result => {
+          setCloudSyncStatus(result?.ok ? 'synced' : 'error')
         }).catch(() => setCloudSyncStatus('error'))
       }, 600)
 
