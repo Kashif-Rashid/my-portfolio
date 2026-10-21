@@ -88,6 +88,7 @@ export function SliceTile({ image, title, index, onOpen, sliceCount = 5, layoutI
 export function StaticGalleryTile({ image, title, onOpen }) {
   const src = localImage(image, 900)
   const buttonRef = useRef(null)
+  const [loaded, setLoaded] = useState(false)
 
   return <button
     ref={buttonRef}
@@ -97,7 +98,14 @@ export function StaticGalleryTile({ image, title, onOpen }) {
     onClick={() => onOpen?.({ opener: buttonRef.current })}
   >
     <span className="static-gallery-image">
-      <img src={src} alt="" loading="lazy" decoding="async" />
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        style={{ opacity: loaded ? 1 : 0, transition: 'opacity 0.55s ease' }}
+      />
     </span>
     <span className="static-gallery-title">{title}</span>
   </button>

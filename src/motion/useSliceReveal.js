@@ -10,6 +10,9 @@ const loadMotionEngine = () => motionEnginePromise ??= Promise.all([
   ScrollTrigger: triggerModule.ScrollTrigger,
 }))
 
+// Module-level WeakSet: survives re-renders, cleared only when element is GC'd
+const revealedElements = new WeakSet()
+
 export function useSliceReveal(ref, { image, index = 0, sliceCount = 5 } = {}) {
   useEffect(() => {
     const root = ref.current
@@ -45,6 +48,16 @@ export function useSliceReveal(ref, { image, index = 0, sliceCount = 5 } = {}) {
       const rowDelay = (index % Math.max(columnCount, 1)) * 0.12
 
       context = gsap.context(() => {
+        // Already animated — snap to final state instantly, no replay
+        if (revealedElements.has(root)) {
+          if (touchLayout) {
+            gsap.set(strips, { y: 0, opacity: 1, scaleY: 1.25 })
+          } else {
+            gsap.set(strips, { y: 0, opacity: 1 })
+          }
+          return
+        }
+
         if (touchLayout) {
           gsap.fromTo(strips, { y: 34, opacity: 0, scaleY: 0.92 }, {
             y: 0,
@@ -57,7 +70,10 @@ export function useSliceReveal(ref, { image, index = 0, sliceCount = 5 } = {}) {
               start: 'top 84%',
               end: 'center center',
               scrub: 0.6,
-              onEnter: preload,
+              onEnter: () => {
+                preload()
+                revealedElements.add(root)
+              },
             },
           })
           return
@@ -74,7 +90,10 @@ export function useSliceReveal(ref, { image, index = 0, sliceCount = 5 } = {}) {
             trigger: root,
             start: 'top 84%',
             once: true,
-            onEnter: preload,
+            onEnter: () => {
+              preload()
+              revealedElements.add(root)
+            },
           },
         })
       }, root)

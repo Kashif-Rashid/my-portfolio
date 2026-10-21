@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Menu, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { identity, images, imageUrl, localContent, localImage, localSrcSet } from './content'
 import { useSmoothScroll } from '../motion/useSmoothScroll'
@@ -14,7 +14,15 @@ import { AdminModal } from './AdminModal'
 
 const usePublicContent = () => {
   const { content } = usePortfolio()
-  return content
+  // Stable references — only identity changes trigger downstream re-renders
+  const settings = useMemo(() => content.settings || {}, [content.settings])
+  const categories = useMemo(() => content.categories || [], [content.categories])
+  const photos = useMemo(() => content.photos || [], [content.photos])
+  const heroSlides = useMemo(() => content.heroSlides || [], [content.heroSlides])
+  const instagramImages = useMemo(() => content.instagramImages || [], [content.instagramImages])
+  const about = useMemo(() => content.about || {}, [content.about])
+  const contact = useMemo(() => content.contact || {}, [content.contact])
+  return { settings, categories, photos, heroSlides, instagramImages, about, contact }
 }
 
 function TurnstileWidget({ onVerify, onExpire }) {
@@ -189,18 +197,62 @@ function Home({ intro, onOpenViewer }) {
   const slides = heroSlides.length ? heroSlides : images.hero.map(item => ({ src: item.src, altText: item.alt }))
   const categories = cmsCategories.length ? cmsCategories : []
   const current = slides[slide % slides.length] || images.hero[0]
-  const change = (direction) => setSlide(i => (i + direction + slides.length) % slides.length)
+  const heroTouchX = useRef(null)
+
+  const change = useCallback((direction) => {
+    setSlide(i => (i + direction + slides.length) % slides.length)
+  }, [slides.length])
+
+  // Preload adjacent slides so transitions are instant
+  useEffect(() => {
+    const next = slides[(slide + 1) % slides.length]
+    const prev = slides[(slide - 1 + slides.length) % slides.length]
+    ;[next, prev].forEach(s => {
+      if (!s?.src) return
+      const img = new Image()
+      img.src = imageUrl(s.src, 2200)
+    })
+  }, [slide, slides])
+
   useEffect(() => {
     const timer = window.setInterval(() => setSlide(i => (i + 1) % slides.length), 7500)
     return () => window.clearInterval(timer)
   }, [slides.length])
+
   useEffect(() => {
-    const key = e => { if (e.key === 'ArrowRight') change(1); if (e.key === 'ArrowLeft') change(-1) }
-    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)
-  }, [slide])
+    const key = e => {
+      if (e.key === 'ArrowRight') change(1)
+      if (e.key === 'ArrowLeft') change(-1)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [change])
+
   return <>
-    <section className="hero" aria-label="Featured photography" onTouchStart={e => { window.touchX = e.touches[0].clientX }} onTouchEnd={e => { const dx = e.changedTouches[0].clientX - (window.touchX || 0); if (Math.abs(dx) > 55) change(dx < 0 ? 1 : -1) }}>
-      <AnimatePresence mode="sync"><motion.img key={current.src} className="hero-image" src={imageUrl(current.src, 2200)} sizes="100vw" alt={current.altText || current.alt || ''} initial={intro.show ? { opacity: 1, scale: 1.15 } : { opacity: 0, scale: 1.04 }} animate={intro.ready ? { opacity: 1, scale: 1 } : { opacity: 1, scale: 1.15 }} exit={{ opacity: 0 }} transition={{ opacity: { duration: 1.5 }, scale: { duration: intro.show ? 1.6 : 8, ease: 'linear' } }} /></AnimatePresence>
+    <section
+      className="hero"
+      aria-label="Featured photography"
+      onTouchStart={e => { heroTouchX.current = e.touches[0].clientX }}
+      onTouchEnd={e => {
+        if (heroTouchX.current === null) return
+        const dx = e.changedTouches[0].clientX - heroTouchX.current
+        heroTouchX.current = null
+        if (Math.abs(dx) > 55) change(dx < 0 ? 1 : -1)
+      }}
+    >
+      <AnimatePresence mode="wait">
+        <motion.img
+          key={current.src}
+          className="hero-image"
+          src={imageUrl(current.src, 2200)}
+          sizes="100vw"
+          alt={current.altText || current.alt || ''}
+          initial={intro.show ? { opacity: 1, scale: 1.15 } : { opacity: 0, scale: 1.04 }}
+          animate={intro.ready ? { opacity: 1, scale: 1 } : { opacity: 1, scale: 1.15 }}
+          exit={{ opacity: 0 }}
+          transition={{ opacity: { duration: 1.2 }, scale: { duration: intro.show ? 1.6 : 8, ease: 'linear' } }}
+        />
+      </AnimatePresence>
       <div className="hero-shade" />
       <motion.div className="hero-copy" initial={{ opacity: 0, y: 18 }} animate={intro.ready ? { opacity: 1, y: 0 } : { opacity: 0, y: 18 }} transition={{ duration: 1.05, delay: intro.show ? 0.2 : 0.1, ease: motionTokens.easing.luxury }}><span className="eyebrow">{settings.tagline || identity.position}</span><h1>{settings.heroHeading || <>The art of<br/>being here</>}</h1><p>{settings.subtitle || identity.subline}</p></motion.div>
       <button className="hero-arrow hero-prev" onClick={() => change(-1)} aria-label="Previous photograph"><ArrowLeft/></button>
@@ -210,9 +262,8 @@ function Home({ intro, onOpenViewer }) {
     <section className="portfolio section-wrap" id="portfolio">
       <motion.div className="section-heading" variants={reveal} initial="hidden" whileInView="visible" viewport={{ once: true, amount: .2 }}><span className="eyebrow">A considered collection</span><h2>Stories, in their own light</h2></motion.div>
       <div className="category-grid">{categories.map((category, i) => {
-        const categoryPhotos = photos.filter(photo => photo.categorySlug === category.slug)
         const fallback = <a className="category-card slice-fallback-card" href={`/portfolio/${category.slug}`} key={category.slug}><img src={localImage(category.coverImage, 900)} alt={category.coverImage.alt}/><h3>{category.title}</h3></a>
-        return <SliceTileBoundary fallback={fallback} key={category.slug}><SliceTile image={category.coverImage} title={category.title} index={i} sliceCount={5} layoutId={`gallery-${category.slug}-${categoryPhotos[0]?._id}`} onOpen={details => onOpenViewer(category, 0, details)}/></SliceTileBoundary>
+        return <SliceTileBoundary fallback={fallback} key={category.slug}><SliceTile image={category.coverImage} title={category.title} index={i} sliceCount={5} layoutId={`gallery-${category.slug}`} onOpen={details => onOpenViewer(category, 0, details)}/></SliceTileBoundary>
       })}</div>
     </section>
     <section className="about-teaser section-wrap">

@@ -37,8 +37,8 @@
 .fullscreen-viewer{position:fixed;z-index:120;inset:0;background:rgba(15,15,15,.92);color:#fff;backdrop-filter:blur(2px)}
 .fullscreen-viewer-dialog{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;outline:none}
 .viewer-media{position:relative;width:min(78vw,1380px);height:min(76vh,920px);display:grid;place-items:center;overflow:hidden}
-.viewer-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none}
-.viewer-close,.viewer-arrow{position:absolute;z-index:3;width:46px;height:46px;display:grid;place-items:center;border:0;background:transparent;color:#fff;cursor:pointer;transition:color .35s,opacity .35s}
+.viewer-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none;will-change:opacity;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.viewer-close,.viewer-arrow{position:absolute;z-index:3;width:46px;height:46px;display:grid;place-items:center;border:0;background:transparent;color:#fff;cursor:pointer;transition:color .35s,opacity .35s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .viewer-close:hover,.viewer-arrow:hover{color:var(--accent-champagne)}
 .viewer-close{top:27px;right:34px}
 .viewer-arrow{top:50%;transform:translateY(-50%)}
@@ -54,7 +54,7 @@
 .viewer-slice-close{position:absolute;inset:0;background:#0f0f0f}
 .viewer-slice-close span{position:absolute;left:0;width:100%;height:20%;background-repeat:no-repeat;opacity:0;transform:translateY(14px);animation:viewer-slice-arrive .48s var(--ease-luxury) forwards;animation-delay:calc(var(--strip-index)*55ms)}
 .viewer-media.is-switching .viewer-slice-close span{opacity:1;transform:translateY(0)}
-@keyframes viewer-slice-arrive{to{opacity:1;transform:translateY(0)}}
+@keyframes viewer-slice-arrive{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 
 @media(max-width:900px){.category-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:56px 4vw}}
 @media(max-width:640px){.category-grid{grid-template-columns:1fr;gap:42px}.slice-tile-title{font-size:16px;margin-top:15px}.viewer-media{width:100vw;height:72vh}.viewer-close{top:12px;right:12px}.viewer-previous{left:4px}.viewer-next{right:4px}.viewer-caption{bottom:4vh}.viewer-caption p{font-size:16px}}

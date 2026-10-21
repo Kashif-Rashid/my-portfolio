@@ -32,7 +32,7 @@ export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, 
       setActiveIndex(index => (index + direction + photos.length) % photos.length)
       switchingRef.current = false
       setSwitching(false)
-    }, 600)
+    }, 500)
   }, [animateTransition, photos.length])
 
   useEffect(() => {
@@ -59,6 +59,7 @@ export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, 
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', onKeyDown)
       window.clearTimeout(transitionTimer.current)
+      touchStart.current = null
       resetTile?.()
       opener?.focus({ preventScroll: true })
     }
@@ -101,12 +102,13 @@ export function FullscreenViewer({ category, photos, initialIndex = 0, onClose, 
             layoutId={sharedLayoutId}
             src={largeSrc}
             alt={photo.altText || photo.image?.alt || ''}
-            initial={{ opacity: 0.65, clipPath: 'inset(0 50% 0 50%)' }}
-            animate={{ opacity: 1, clipPath: 'inset(0 0% 0 0%)' }}
-            exit={{ opacity: 0, clipPath: 'inset(0 50% 0 50%)', transition: { duration: 0.5, ease: motionTokens.easing.silk } }}
-            transition={{ duration: 0.9, ease: motionTokens.easing.silk, layout: { duration: 0.9, ease: motionTokens.easing.luxury } }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.3, ease: motionTokens.easing.silk } }}
+            transition={{ duration: 0.55, ease: motionTokens.easing.silk, layout: { duration: 0.8, ease: motionTokens.easing.luxury } }}
             draggable="false"
-          /> : <img key={photo._id} className="viewer-image" src={largeSrc} alt={photo.altText || photo.image?.alt || ''} draggable="false" />)}
+            loading="eager"
+          /> : <img key={photo._id} className="viewer-image" src={largeSrc} alt={photo.altText || photo.image?.alt || ''} draggable="false" loading="eager" />)}
         </AnimatePresence>
         {animateTransition && switching && <div className="viewer-slice-close" aria-hidden="true">{Array.from({ length: 5 }, (_, strip) => <span key={strip} style={{ '--strip-index': strip, top: `${strip * 20}%`, backgroundImage: `url("${largeSrc}")`, backgroundSize: '100% 500%', backgroundPosition: `center ${strip * 25}%` }} />)}</div>}
       </div>

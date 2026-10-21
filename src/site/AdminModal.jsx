@@ -335,6 +335,20 @@ export function AdminModal() {
 
     const compressedSrc = await compressDataUrl(photoForm.src.trim(), 1200, 0.72)
 
+    // Preload into browser cache so gallery shows photo instantly (no flash)
+    if (compressedSrc && !compressedSrc.startsWith('data:')) {
+      try {
+        await new Promise((resolve) => {
+          const preImg = new Image()
+          preImg.onload = resolve
+          preImg.onerror = resolve // don't block on network error
+          preImg.src = imageUrl(compressedSrc, 900)
+          // Timeout safety — don't wait more than 4s
+          window.setTimeout(resolve, 4000)
+        })
+      } catch { /* ignore */ }
+    }
+
     if (editingPhotoId) {
       editPhoto(editingPhotoId, {
         ...photoForm,
