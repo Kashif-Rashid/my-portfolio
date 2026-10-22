@@ -25,6 +25,15 @@
 .view-all-button{margin-top:20px;padding:10px 14px;border:1px solid var(--accent-champagne);background:transparent;color:#2d2b27;font:400 8px Jost,sans-serif;letter-spacing:.2em;cursor:pointer;transition:background .35s,color .35s}
 .view-all-button:hover{background:var(--accent-champagne);color:#fff}
 .gallery-grid{align-items:start}
+.category-grid .static-gallery-tile{display:block;width:100%;padding:0;border:0;background:none;text-align:center;color:inherit;cursor:pointer}
+.category-grid .static-gallery-image{position:relative;display:block;aspect-ratio:4/5;overflow:hidden;background:#e9e6e1}
+.category-grid .static-gallery-image img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;transition:transform .9s var(--ease-luxury),filter .9s var(--ease-luxury)}
+.category-grid .static-gallery-tile:hover .static-gallery-image img{transform:scale(1.04);filter:brightness(.9)}
+.category-grid .static-gallery-title{position:relative;display:inline-block;margin:20px 0 0;padding:0 0 9px;font:400 19px 'Bodoni Moda',serif;letter-spacing:.14em;text-transform:uppercase;transition:letter-spacing .6s var(--ease-luxury)}
+.category-grid .static-gallery-title::after{position:absolute;right:50%;bottom:0;left:50%;height:1px;background:var(--accent-champagne);content:"";transition:left .55s var(--ease-silk),right .55s var(--ease-silk)}
+.category-grid .static-gallery-tile:hover .static-gallery-title{letter-spacing:.2em}
+.category-grid .static-gallery-tile:hover .static-gallery-title::after{left:0;right:0}
+.category-grid .static-gallery-tile:focus-visible{outline:1px solid var(--accent-champagne);outline-offset:6px}
 .gallery-grid .static-gallery-tile{display:block;width:100%;padding:0;border:0;background:none;text-align:center;color:inherit;cursor:pointer}
 .gallery-grid .static-gallery-image{position:relative;display:block;aspect-ratio:4/5;padding:0;overflow:hidden;background:#e9e6e1}
 .gallery-grid .static-gallery-image img{position:absolute;inset:0;display:block;width:100%;height:100%;max-height:none;object-fit:cover}

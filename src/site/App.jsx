@@ -262,8 +262,7 @@ function Home({ intro, onOpenViewer }) {
     <section className="portfolio section-wrap" id="portfolio">
       <motion.div className="section-heading" variants={reveal} initial="hidden" whileInView="visible" viewport={{ once: true, amount: .2 }}><span className="eyebrow">A considered collection</span><h2>Stories, in their own light</h2></motion.div>
       <div className="category-grid">{categories.map((category, i) => {
-        const fallback = <a className="category-card slice-fallback-card" href={`/portfolio/${category.slug}`} key={category.slug}><img src={localImage(category.coverImage, 900)} alt={category.coverImage.alt}/><h3>{category.title}</h3></a>
-        return <SliceTileBoundary fallback={fallback} key={category.slug}><SliceTile image={category.coverImage} title={category.title} index={i} sliceCount={5} layoutId={`gallery-${category.slug}`} onOpen={details => onOpenViewer(category, 0, details)}/></SliceTileBoundary>
+        return <StaticGalleryTile key={category.slug} image={category.coverImage} title={category.title} onOpen={details => onOpenViewer(category, 0, details)} />
       })}</div>
     </section>
     <section className="about-teaser section-wrap">
@@ -547,7 +546,7 @@ function App() {
       </motion.div>
     </AnimatePresence>
     <AnimatePresence>
-      {viewer && <FullscreenViewer category={viewer.category} photos={viewer.photos} initialIndex={viewer.initialIndex} onClose={closeViewer} opener={viewer.opener} resetTile={viewer.resetTile} animateTransition={viewer.animateTransition}/>}
+      {viewer && <FullscreenViewer category={viewer.category} photos={viewer.photos} initialIndex={viewer.initialIndex} onClose={closeViewer} opener={viewer.opener} resetTile={viewer.resetTile} animateTransition={false}/>}
     </AnimatePresence>
     {intro.show && <Preloader onReveal={() => setIntro(state => ({ ...state, ready: true }))} onComplete={() => setIntro({ show: false, ready: true })}/>}
     <AdminModal/>
