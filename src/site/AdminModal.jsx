@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   X, Plus, Trash2, Edit3, Image as ImageIcon, Settings, User, 
-  FolderPlus, Upload, Download, RefreshCw, Key, Check, AlertCircle, Eye, Layers, Loader2, Cloud, Globe,
+  FolderPlus, Upload, Download, RefreshCw, Key, Check, AlertCircle, Eye, EyeOff, Layers, Loader2, Cloud, Globe,
   MessageSquare, Phone, Mail, Calendar, MapPin, Clock, MessageCircle, ExternalLink, CheckCircle
 } from 'lucide-react'
 import { usePortfolio } from './usePortfolioData'
@@ -130,7 +130,9 @@ export function AdminModal() {
     syncCurrentContentToCloud,
     enquiries = [],
     deleteEnquiry,
-    updateEnquiryStatus
+    updateEnquiryStatus,
+    sitePublished,
+    togglePublished
   } = usePortfolio()
 
   // Cloud Config state
@@ -490,10 +492,76 @@ export function AdminModal() {
             <span className="admin-badge">Admin Studio</span>
             <h2>Portfolio Management</h2>
           </div>
-          <button className="admin-close-btn" onClick={closeAdmin} aria-label="Close admin panel">
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {isAuthenticated && (
+              <>
+                <button
+                  type="button"
+                  className="admin-cloud-sync-header-btn"
+                  onClick={async () => {
+                    setCloudSyncing(true)
+                    const res = await syncCurrentContentToCloud()
+                    setCloudSyncing(false)
+                    if (res?.ok) {
+                      setCloudSyncFeedback({ type: 'success', text: 'All photographs and updates synced to cloud across all devices!' })
+                    } else {
+                      setCloudSyncFeedback({ type: 'error', text: res?.error || 'Cloud sync failed. Check internet/Firebase.' })
+                    }
+                    setTimeout(() => setCloudSyncFeedback(null), 4000)
+                  }}
+                  title="Auto-sync is active. Changes automatically push to your phone and all devices. Click anytime to force sync."
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    border: '1px solid #d1d5db',
+                    background: '#f9fafb',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    minHeight: '44px',
+                    color: '#374151'
+                  }}
+                >
+                  <Cloud size={14} color={cloudSyncStatus === 'syncing' || cloudSyncing ? "#eab308" : cloudSyncStatus === 'error' ? "#ef4444" : "#16a34a"} />
+                  {cloudSyncStatus === 'syncing' || cloudSyncing ? 'Syncing...' : cloudSyncStatus === 'error' ? 'Retry Sync' : 'Auto-Synced'}
+                </button>
+                <button
+                  className={`admin-publish-btn${sitePublished ? ' published' : ' unpublished'}`}
+                  onClick={togglePublished}
+                  title={sitePublished ? 'Site is live — click to take it offline' : 'Site is offline — click to publish'}
+                  aria-label={sitePublished ? 'Unpublish site' : 'Publish site'}
+                >
+                  {sitePublished ? <Eye size={15}/> : <EyeOff size={15}/>}
+                  {sitePublished ? 'Published' : 'Unpublished'}
+                </button>
+              </>
+            )}
+            <button className="admin-close-btn" onClick={closeAdmin} aria-label="Close admin panel">
+              <X size={20} />
+            </button>
+          </div>
         </div>
+
+        {cloudSyncFeedback && (
+          <div style={{
+            padding: '8px 24px',
+            fontSize: '12px',
+            fontWeight: 500,
+            background: cloudSyncFeedback.type === 'success' ? '#ecfdf5' : '#fef2f2',
+            color: cloudSyncFeedback.type === 'success' ? '#065f46' : '#991b1b',
+            borderBottom: `1px solid ${cloudSyncFeedback.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <span>{cloudSyncFeedback.type === 'success' ? '✅' : '❌'} {cloudSyncFeedback.text}</span>
+          </div>
+        )}
 
         {/* PIN Screen */}
         {!isAuthenticated ? (

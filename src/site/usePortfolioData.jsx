@@ -11,7 +11,9 @@ import {
   subscribeToCloudEnquiries,
   deleteEnquiryFromCloud,
   updateEnquiryStatusInCloud,
-  getLocalEnquiries
+  getLocalEnquiries,
+  pushSiteStatusToCloud,
+  subscribeToSiteStatus
 } from './firebase'
 
 const STORAGE_KEY = 'portfolio_cms_content_v1'
@@ -120,6 +122,7 @@ const PortfolioContext = createContext(null)
 
 export function PortfolioProvider({ children }) {
   const cloudPushTimer = useRef(null)
+  const localPushedVersionRef = useRef(null)
   const [cloudSyncStatus, setCloudSyncStatus] = useState('synced')
   const [content, setContent] = useState(() => {
     try {
@@ -149,6 +152,41 @@ export function PortfolioProvider({ children }) {
 
   const [isAdminOpen, setIsAdminOpen] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [cloudConnected, setCloudConnected] = useState(() => Boolean(getDb()))
+
+  // ─── Site Published / Unpublished ──────────────────────────────────────────
+  // localStorage gives an INSTANT local result on page load (avoids flash).
+  // Firebase subscription then syncs the real value to ALL visitors in real-time.
+  const [sitePublished, setSitePublished] = useState(() => {
+    try {
+      const val = localStorage.getItem('portfolio_site_published')
+      return val === null ? true : val === 'true'
+    } catch { return true }
+  })
+
+  // Subscribe to Firestore site_status so every visitor gets the update
+  useEffect(() => {
+    const unsubscribe = subscribeToSiteStatus((published) => {
+      setSitePublished(published)
+      try { localStorage.setItem('portfolio_site_published', String(published)) } catch {}
+    })
+    return () => { if (typeof unsubscribe === 'function') unsubscribe() }
+  }, [cloudConnected])
+
+  const togglePublished = (forcedValue) => {
+    setSitePublished(prev => {
+      const next = typeof forcedValue === 'boolean' ? forcedValue : !prev
+      // 1. Update localStorage immediately so local UI is instant
+      try { localStorage.setItem('portfolio_site_published', String(next)) } catch {}
+      // 2. Push to Firestore — all visitors and open tabs update within ~1 second
+      pushSiteStatusToCloud(next).catch(err => {
+        console.warn('Could not sync publish status to cloud:', err)
+      })
+      return next
+    })
+  }
+  // ───────────────────────────────────────────────────────────────────────────
+
 
   // Sync from IndexedDB in case it has newer or larger data
   useEffect(() => {
@@ -199,8 +237,6 @@ export function PortfolioProvider({ children }) {
     }
   }, [])
 
-  const [cloudConnected, setCloudConnected] = useState(() => Boolean(getDb()))
-
   // Subscribe to real-time Cloud updates (Laptop <-> Phone <-> Visitors sync)
   useEffect(() => {
     const unsubscribe = subscribeToCloudContent((cloudData) => {
@@ -227,8 +263,12 @@ export function PortfolioProvider({ children }) {
         })
       }
     }, metadata => {
-      const remoteTime = metadata?._lastSavedAt || metadata?._cloudSyncedAt || 0
-      return remoteTime > 0 && remoteTime <= contentSavedAtRef.current
+      // Only skip if THIS tab just uploaded this exact version
+      const ver = String(metadata?._lastSavedAt || metadata?.version || '')
+      if (localPushedVersionRef.current && ver && ver === localPushedVersionRef.current) {
+        return true
+      }
+      return false
     })
 
     return () => {
@@ -279,6 +319,7 @@ export function PortfolioProvider({ children }) {
     try {
       setCloudSyncStatus('syncing')
       const savedAt = Date.now()
+      localPushedVersionRef.current = String(savedAt)
       contentSavedAtRef.current = Math.max(contentSavedAtRef.current, savedAt)
       const result = await pushContentToCloud({
         ...content,
@@ -340,9 +381,18 @@ export function PortfolioProvider({ children }) {
       cloudPushTimer.current = setTimeout(() => {
         setCloudSyncStatus('syncing')
         pushContentToCloud(finalized).then(result => {
-          setCloudSyncStatus(result?.ok ? 'synced' : 'error')
-        }).catch(() => setCloudSyncStatus('error'))
-      }, 600)
+          if (result?.ok) {
+            localPushedVersionRef.current = String(finalized._lastSavedAt)
+            setCloudSyncStatus('synced')
+          } else {
+            console.warn('Auto cloud sync failed:', result?.error)
+            setCloudSyncStatus('error')
+          }
+        }).catch(err => {
+          console.warn('Auto cloud sync error:', err)
+          setCloudSyncStatus('error')
+        })
+      }, 500)
 
       return finalized
     })
@@ -660,6 +710,8 @@ export function PortfolioProvider({ children }) {
       saveFirebaseConfig,
       getStoredFirebaseConfig,
       syncCurrentContentToCloud,
+      sitePublished,
+      togglePublished,
       enquiries,
       submitEnquiry,
       deleteEnquiry,

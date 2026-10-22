@@ -87,7 +87,7 @@ export function reinitFirebase(newConfig) {
 }
 
 const CHUNK_SIZE = 700000 // Firestore document safety limit
-const SYNC_TIMEOUT_MS = 20000
+const SYNC_TIMEOUT_MS = 60000 // 60s timeout for high-resolution photography uploads
 const PUBLISH_COLLECTION = 'portfolio_cms_versions'
 
 // Clean and deduplicate duplicate image data before transmitting to Firestore
@@ -105,6 +105,18 @@ function sanitizeContentForUpload(data) {
       return cat
     })
   }
+  if (Array.isArray(clean.photos)) {
+    clean.photos = clean.photos.map(p => {
+      // If p.image.src is identical to p.src, strip redundant duplicate Base64 copy to cut payload in half
+      if (p && p.image && typeof p.image === 'object' && p.image.src === p.src) {
+        return {
+          ...p,
+          image: { alt: p.image.alt || p.altText || '' }
+        }
+      }
+      return p
+    })
+  }
   return clean
 }
 
@@ -120,6 +132,17 @@ function restoreSanitizedContent(data) {
         }
       }
       return cat
+    })
+  }
+  if (Array.isArray(data.photos)) {
+    data.photos = data.photos.map(p => {
+      if (p && p.src && p.image && !p.image.src) {
+        return {
+          ...p,
+          image: { ...p.image, src: p.src }
+        }
+      }
+      return p
     })
   }
   return data
@@ -193,19 +216,17 @@ export async function pushContentToCloud(contentData, maxRetries = 2) {
           _cloudSyncedAt: cleanData._cloudSyncedAt
         }), SYNC_TIMEOUT_MS)
       } else {
-        // Stage immutable versioned chunks, then atomically publish the pointer.
-        // Readers can never combine chunks from two different saves.
+        // Stage immutable versioned chunks sequentially to avoid socket congestion, then publish pointer
         const totalChunks = Math.ceil(jsonStr.length / CHUNK_SIZE)
         const version = `${cleanData._lastSavedAt}_${Math.random().toString(36).slice(2, 8)}`
-        const uploadChunks = Array.from({ length: totalChunks }, (_, i) => {
+        for (let i = 0; i < totalChunks; i++) {
           const chunkPart = jsonStr.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-          return withTimeout(setDoc(doc(db, PUBLISH_COLLECTION, `${version}_chunk_${i}`), {
+          await withTimeout(setDoc(doc(db, PUBLISH_COLLECTION, `${version}_chunk_${i}`), {
             data: chunkPart,
             index: i,
             version
           }), SYNC_TIMEOUT_MS)
-        })
-        await Promise.all(uploadChunks)
+        }
         await withTimeout(setDoc(docRef, {
           isChunked: true,
           chunkCount: totalChunks,
@@ -403,3 +424,62 @@ export async function updateEnquiryStatusInCloud(enquiryId, status) {
     }
   }
 }
+
+// ----------------------------------------------------
+// Site Published / Unpublished Status (global, affects ALL visitors)
+// Stored in a dedicated Firestore document so changes are instant worldwide.
+// ----------------------------------------------------
+const STATUS_COLLECTION = 'portfolio_cms'
+const STATUS_DOC_ID = 'site_status'
+
+/**
+ * Push the published/unpublished flag to Firestore.
+ * Every connected visitor will receive this change within ~1 second.
+ */
+export async function pushSiteStatusToCloud(published) {
+  const db = getDb()
+  if (!db) return { ok: false, error: 'Firebase not connected' }
+  try {
+    await withTimeout(
+      setDoc(doc(db, STATUS_COLLECTION, STATUS_DOC_ID), {
+        published: Boolean(published),
+        updatedAt: Date.now()
+      }),
+      10000
+    )
+    return { ok: true }
+  } catch (err) {
+    console.warn('Failed to push site status to cloud:', err)
+    return { ok: false, error: err?.message || String(err) }
+  }
+}
+
+/**
+ * Subscribe to real-time site status updates.
+ * onUpdate(published: boolean) is called immediately with the current value
+ * and again every time an admin toggles publish/unpublish.
+ */
+export function subscribeToSiteStatus(onUpdate) {
+  const db = getDb()
+  if (!db) return () => {}
+  try {
+    const docRef = doc(db, STATUS_COLLECTION, STATUS_DOC_ID)
+    const unsubscribe = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data()
+        // If the field doesn't exist yet, treat as published
+        onUpdate(data.published !== false)
+      } else {
+        // If document doesn't exist yet in Firestore, default to published
+        onUpdate(true)
+      }
+    }, (err) => {
+      console.warn('Site status listener error:', err?.message || err)
+    })
+    return unsubscribe
+  } catch (err) {
+    console.warn('Failed to subscribe to site status:', err)
+    return () => {}
+  }
+}
+

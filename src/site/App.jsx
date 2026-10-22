@@ -13,7 +13,7 @@ import { usePortfolio } from './usePortfolioData'
 import { AdminModal } from './AdminModal'
 
 const usePublicContent = () => {
-  const { content } = usePortfolio()
+  const { content, sitePublished } = usePortfolio()
   // Stable references — only identity changes trigger downstream re-renders
   const settings = useMemo(() => content.settings || {}, [content.settings])
   const categories = useMemo(() => content.categories || [], [content.categories])
@@ -22,7 +22,7 @@ const usePublicContent = () => {
   const instagramImages = useMemo(() => content.instagramImages || [], [content.instagramImages])
   const about = useMemo(() => content.about || {}, [content.about])
   const contact = useMemo(() => content.contact || {}, [content.contact])
-  return { settings, categories, photos, heroSlides, instagramImages, about, contact }
+  return { settings, categories, photos, heroSlides, instagramImages, about, contact, sitePublished }
 }
 
 function TurnstileWidget({ onVerify, onExpire }) {
@@ -151,7 +151,7 @@ function Header() {
   }, [])
   const close = () => setMobile(false)
   return <>
-    <header className={`site-header ${scrolled ? 'is-scrolled' : ''}`}>
+    <header className={`site-header ${scrolled ? 'is-scrolled' : ''} ${mobile ? 'menu-is-open' : ''}`}>
       <Link className="wordmark" to="/" onClick={close}>{settings.logoText || identity.name}<span>PHOTOGRAPHY</span></Link>
       <nav className="desktop-nav" aria-label="Main navigation">
         <div className="nav-dropdown" onMouseEnter={() => setMenu(true)} onMouseLeave={() => setMenu(false)}>
@@ -161,7 +161,7 @@ function Header() {
         <a href={`https://instagram.com/${handle.replace('@','')}`} target="_blank" rel="noreferrer">Instagram <ArrowUpRight size={11}/></a>
         <Link to="/about">About</Link><Link to="/contact">Contact</Link>
       </nav>
-      <button className="menu-toggle" aria-label={mobile ? 'Close menu' : 'Open menu'} onClick={() => setMobile(!mobile)}>{mobile ? <X/> : <Menu/>}</button>
+      <button className="menu-toggle" aria-label={mobile ? 'Close menu' : 'Open menu'} onClick={() => setMobile(!mobile)}>{mobile ? <X size={22}/> : <Menu size={22}/>}</button>
     </header>
     <AnimatePresence>{mobile && <motion.nav className="mobile-menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .35 }} aria-label="Mobile navigation">
       <MobilePortfolioAccordion categories={categories} onClose={close} />
@@ -240,19 +240,25 @@ function Home({ intro, onOpenViewer }) {
         if (Math.abs(dx) > 55) change(dx < 0 ? 1 : -1)
       }}
     >
-      <AnimatePresence mode="wait">
-        <motion.img
-          key={current.src}
-          className="hero-image"
-          src={imageUrl(current.src, 2200)}
-          sizes="100vw"
-          alt={current.altText || current.alt || ''}
-          initial={intro.show ? { opacity: 1, scale: 1.15 } : { opacity: 0, scale: 1.04 }}
-          animate={intro.ready ? { opacity: 1, scale: 1 } : { opacity: 1, scale: 1.15 }}
-          exit={{ opacity: 0 }}
-          transition={{ opacity: { duration: 1.2 }, scale: { duration: intro.show ? 1.6 : 8, ease: 'linear' } }}
-        />
-      </AnimatePresence>
+      <div className="hero-slides-container" aria-hidden="true">
+        {slides.map((s, i) => (
+          <img
+            key={s.src}
+            className={`hero-image hero-slide-img${i === (slide % slides.length) ? ' hero-slide-active' : ''}`}
+            src={imageUrl(s.src, 2200)}
+            alt={s.altText || s.alt || ''}
+            aria-hidden={i !== (slide % slides.length)}
+            style={{
+              opacity: i === (slide % slides.length)
+                ? (intro.ready ? 1 : intro.show ? 1 : 0)
+                : 0,
+              transform: i === (slide % slides.length) && intro.show && !intro.ready
+                ? 'scale(1.15)'
+                : 'scale(1)'
+            }}
+          />
+        ))}
+      </div>
       <div className="hero-shade" />
       <motion.div className="hero-copy" initial={{ opacity: 0, y: 18 }} animate={intro.ready ? { opacity: 1, y: 0 } : { opacity: 0, y: 18 }} transition={{ duration: 1.05, delay: intro.show ? 0.2 : 0.1, ease: motionTokens.easing.luxury }}><span className="eyebrow">{settings.tagline || identity.position}</span><h1>{settings.heroHeading || <>The art of<br/>being here</>}</h1><p>{settings.subtitle || identity.subline}</p></motion.div>
       <button className="hero-arrow hero-prev" onClick={() => change(-1)} aria-label="Previous photograph"><ArrowLeft/></button>
@@ -493,6 +499,88 @@ function CategoryPage({ onOpenViewer }) {
 function PlaceholderPage({ title }) {
   return <main className="placeholder-page"><span className="eyebrow">An invitation to begin</span><h1>{title}</h1><Link className="outline-button" to="/">Return home <ArrowUpRight size={13}/></Link></main>
 }
+function MaintenancePage() {
+  const { settings } = usePublicContent()
+  const { setIsAdminOpen } = usePortfolio()
+  const secretTap = useSecretAdminTap(3)
+  const name = settings.logoText || identity.name
+  return (
+    <main className="maintenance-page" aria-label="Site under maintenance">
+      <div className="maintenance-inner">
+        <span 
+          className="wordmark maintenance-wordmark"
+          onClick={secretTap}
+          onTouchStart={secretTap}
+          style={{ cursor: 'pointer', userSelect: 'none' }}
+          title="Admin: triple-tap to sign in"
+        >
+          {name}<span>PHOTOGRAPHY</span>
+        </span>
+        <h1 className="maintenance-heading">Back Soon</h1>
+        <p className="maintenance-sub">We are making some updates to the website.<br/>Please check back shortly.</p>
+        <span className="maintenance-eyebrow eyebrow">COMING BACK SOON</span>
+        <button
+          type="button"
+          onClick={() => setIsAdminOpen(true)}
+          className="maintenance-admin-link"
+          aria-label="Owner sign in"
+        >
+          Owner Sign In
+        </button>
+      </div>
+    </main>
+  )
+}
+
+function SiteGate({ children }) {
+  const { sitePublished, isAdminOpen, isAuthenticated, togglePublished, setIsAdminOpen } = usePortfolio()
+
+  if (!sitePublished) {
+    // Normal visitors (not signed into admin) see ONLY the Maintenance screen
+    if (!isAuthenticated && !isAdminOpen) {
+      return (
+        <>
+          <MaintenancePage />
+          <AdminModal />
+        </>
+      )
+    }
+
+    // Owner/admin preview mode: allows viewing & testing changes while unpublished
+    return (
+      <>
+        <div className="admin-unpublished-pill" role="status" aria-label="Site status indicator">
+          <span className="admin-unpublished-dot" aria-hidden="true" />
+          <span className="admin-unpublished-text">
+            <strong>Site Unpublished</strong> — Visitors see &ldquo;Back Soon&rdquo;
+          </span>
+          <div className="admin-unpublished-actions">
+            <button
+              type="button"
+              onClick={() => togglePublished(true)}
+              className="admin-unpublished-btn publish"
+              title="Publish website so it becomes visible to all visitors"
+            >
+              Publish Now
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAdminOpen(true)}
+              className="admin-unpublished-btn studio"
+              title="Open Admin Studio"
+            >
+              Studio
+            </button>
+          </div>
+        </div>
+        {children}
+      </>
+    )
+  }
+
+  return children
+}
+
 function readInitialIntroState() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return { show: false, ready: true }
   try {
@@ -530,27 +618,29 @@ function App() {
       window.scrollTo(0, 0)
     }
   }, [location.pathname, location.hash, lenisRef])
-  return <>
-    <SEO/>
-    <Header/>
-    <AnimatePresence mode="wait">
-      <motion.div key={location.pathname} className="page-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .3 }}>
-        <Routes location={location}>
-          <Route path="/" element={<Home intro={intro} onOpenViewer={openViewer}/>}/>
-          <Route path="/about" element={<AboutPage/>}/>
-          <Route path="/contact" element={<ContactPage/>}/>
-          <Route path="/portfolio/:slug" element={<CategoryPage onOpenViewer={openViewer}/>}/>
-          <Route path="*" element={<PlaceholderPage title="Page not found"/>}/>
-        </Routes>
-        <Footer/>
-      </motion.div>
-    </AnimatePresence>
-    <AnimatePresence>
-      {viewer && <FullscreenViewer category={viewer.category} photos={viewer.photos} initialIndex={viewer.initialIndex} onClose={closeViewer} opener={viewer.opener} resetTile={viewer.resetTile} animateTransition={false}/>}
-    </AnimatePresence>
-    {intro.show && <Preloader onReveal={() => setIntro(state => ({ ...state, ready: true }))} onComplete={() => setIntro({ show: false, ready: true })}/>}
-    <AdminModal/>
-  </>
+  return (
+    <SiteGate>
+      <SEO/>
+      <Header/>
+      <AnimatePresence mode="wait">
+        <motion.div key={location.pathname} className="page-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .3 }}>
+          <Routes location={location}>
+            <Route path="/" element={<Home intro={intro} onOpenViewer={openViewer}/>}/>
+            <Route path="/about" element={<AboutPage/>}/>
+            <Route path="/contact" element={<ContactPage/>}/>
+            <Route path="/portfolio/:slug" element={<CategoryPage onOpenViewer={openViewer}/>}/>
+            <Route path="*" element={<PlaceholderPage title="Page not found"/>}/>
+          </Routes>
+          <Footer/>
+        </motion.div>
+      </AnimatePresence>
+      <AnimatePresence>
+        {viewer && <FullscreenViewer category={viewer.category} photos={viewer.photos} initialIndex={viewer.initialIndex} onClose={closeViewer} opener={viewer.opener} resetTile={viewer.resetTile} animateTransition={false}/>}
+      </AnimatePresence>
+      {intro.show && <Preloader onReveal={() => setIntro(state => ({ ...state, ready: true }))} onComplete={() => setIntro({ show: false, ready: true })}/>}
+      <AdminModal/>
+    </SiteGate>
+  )
 }
 
 export default App
